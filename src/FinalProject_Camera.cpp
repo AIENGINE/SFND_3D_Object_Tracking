@@ -70,10 +70,26 @@ int main(int argc, const char *argv[])
 
     // misc
     double sensorFrameRate = 10.0 / imgStepWidth; // frames per second for Lidar and camera
-    int dataBufferSize = 2;       // no. of images which are held in memory (ring buffer) at the same time
-    vector<DataFrame> dataBuffer; // list of data frames which are held in memory at the same time
-    bool bVis = false;            // visualize results
+    const int dataBufferSize{2};      // no. of images which are held in memory (ring buffer) at the same time
+    array<DataFrame, dataBufferSize> dataBuffer; // list of data frames which are held in memory at the same time
+    uint8_t circularIdx{0};
+    bool bVis = true;            // visualize results
 
+    uint numberOfKeypointsOnVehicle{0};
+    vector<uint> numOfKeypointsPerImage;
+    uint avgKeypointNeighborhoodSize{0};
+    vector<uint> nunOfKeypointNeighborhoodSizePerImage;
+    vector<uint> numOfKeypointMatchesPerImage;
+    uint numOfKeypointMatches;
+    double keypointDetectionTime;
+    double keypointDiscriptorTime;
+    vector<double> keypointDetectionTimePerImg;
+    vector<double> keypointDiscriptorTimePerImg;
+
+    string selectedDetectorType = "AKAZE";
+    string selectedDescriptorType = "AKAZE";
+    MatchingParameters descMatchingParameters{};
+    bool visualizationEnable{false};
     /* MAIN LOOP OVER ALL IMAGES */
 
     for (size_t imgIndex = 0; imgIndex <= imgEndIndex - imgStartIndex; imgIndex+=imgStepWidth)
@@ -91,7 +107,8 @@ int main(int argc, const char *argv[])
         // push image into data frame buffer
         DataFrame frame;
         frame.cameraImg = img;
-        dataBuffer.push_back(frame);
+        circularIdx = circularIdx % dataBufferSize;
+        dataBuffer[circularIdx] = frame;
 
         cout << "#1 : LOAD IMAGE INTO BUFFER done" << endl;
 
@@ -100,7 +117,7 @@ int main(int argc, const char *argv[])
 
         float confThreshold = 0.2;
         float nmsThreshold = 0.4;        
-        detectObjects((dataBuffer.end() - 1)->cameraImg, (dataBuffer.end() - 1)->boundingBoxes, confThreshold, nmsThreshold,
+        detectObjects(dataBuffer[circularIdx].cameraImg, dataBuffer[circularIdx].boundingBoxes, confThreshold, nmsThreshold,
                       yoloBasePath, yoloClassesFile, yoloModelConfiguration, yoloModelWeights, bVis);
 
         cout << "#2 : DETECT & CLASSIFY OBJECTS done" << endl;
@@ -129,7 +146,7 @@ int main(int argc, const char *argv[])
         clusterLidarWithROI((dataBuffer.end()-1)->boundingBoxes, (dataBuffer.end() - 1)->lidarPoints, shrinkFactor, P_rect_00, R_rect_00, RT);
 
         // Visualize 3D objects
-        bVis = true;
+        bVis = false;
         if(bVis)
         {
             show3DObjects((dataBuffer.end()-1)->boundingBoxes, cv::Size(4.0, 20.0), cv::Size(1000, 2000), true);
@@ -140,43 +157,44 @@ int main(int argc, const char *argv[])
         
         
         // REMOVE THIS LINE BEFORE PROCEEDING WITH THE FINAL PROJECT
-        continue; // skips directly to the next image without processing what comes beneath
+//        continue; // skips directly to the next image without processing what comes beneath
 
         /* DETECT IMAGE KEYPOINTS */
 
         // convert current image to grayscale
         cv::Mat imgGray;
-        cv::cvtColor((dataBuffer.end()-1)->cameraImg, imgGray, cv::COLOR_BGR2GRAY);
+        cv::cvtColor(dataBuffer[circularIdx].cameraImg, imgGray, cv::COLOR_BGR2GRAY);
 
         // extract 2D keypoints from current image
         vector<cv::KeyPoint> keypoints; // create empty feature list for current image
-        string detectorType = "SHITOMASI";
+//        string detectorType = "SHITOMASI";
 
-        if (detectorType.compare("SHITOMASI") == 0)
+        if (selectedDetectorType == "SHITOMASI")
         {
-            detKeypointsShiTomasi(keypoints, imgGray, false);
+            detKeypointsShiTomasi(keypoints, imgGray, keypointDetectionTime, visualizationEnable);
+        }
+        else if (selectedDetectorType == "HARRIS")
+        {
+            detKeypointsHarris(keypoints, imgGray, keypointDetectionTime, visualizationEnable);
         }
         else
         {
-            //...
+            detKeypointsModern(keypoints, imgGray, selectedDetectorType, keypointDetectionTime, visualizationEnable);
         }
+        keypointDetectionTimePerImg.push_back(keypointDetectionTime);
 
         // optional : limit number of keypoints (helpful for debugging and learning)
         bool bLimitKpts = false;
         if (bLimitKpts)
         {
-            int maxKeypoints = 50;
-
-            if (detectorType.compare("SHITOMASI") == 0)
-            { // there is no response info, so keep the first 50 as they are sorted in descending quality order
-                keypoints.erase(keypoints.begin() + maxKeypoints, keypoints.end());
-            }
+            const int maxKeypoints = 50;
+            keypoints.erase(keypoints.begin() + maxKeypoints, keypoints.end());
             cv::KeyPointsFilter::retainBest(keypoints, maxKeypoints);
             cout << " NOTE: Keypoints have been limited!" << endl;
         }
 
         // push keypoints and descriptor for current frame to end of data buffer
-        (dataBuffer.end() - 1)->keypoints = keypoints;
+        dataBuffer[circularIdx].keypoints = keypoints;
 
         cout << "#5 : DETECT KEYPOINTS done" << endl;
 
@@ -184,24 +202,25 @@ int main(int argc, const char *argv[])
         /* EXTRACT KEYPOINT DESCRIPTORS */
 
         cv::Mat descriptors;
-        string descriptorType = "BRISK"; // BRISK, BRIEF, ORB, FREAK, AKAZE, SIFT
-        descKeypoints((dataBuffer.end() - 1)->keypoints, (dataBuffer.end() - 1)->cameraImg, descriptors, descriptorType);
+//        string descriptorType = "BRISK"; // BRISK, BRIEF, ORB, FREAK, AKAZE, SIFT
+        descKeypoints(dataBuffer[circularIdx].keypoints, dataBuffer[circularIdx].cameraImg, descriptors, selectedDescriptorType, keypointDiscriptorTime);
 
         // push descriptors for current frame to end of data buffer
-        (dataBuffer.end() - 1)->descriptors = descriptors;
+        dataBuffer[circularIdx].descriptors = descriptors;
 
         cout << "#6 : EXTRACT DESCRIPTORS done" << endl;
+        circularIdx++;
 
-
-        if (dataBuffer.size() > 1) // wait until at least two images have been processed
+//        if (dataBuffer.size() > 1) // wait until at least two images have been processed
+        if (!dataBuffer[0].cameraImg.empty() && !dataBuffer[1].cameraImg.empty())
         {
 
             /* MATCH KEYPOINT DESCRIPTORS */
 
             vector<cv::DMatch> matches;
-            string matcherType = "MAT_BF";        // MAT_BF, MAT_FLANN
-            string descriptorType = "DES_BINARY"; // DES_BINARY, DES_HOG
-            string selectorType = "SEL_NN";       // SEL_NN, SEL_KNN
+            string matcherType = descMatchingParameters.matcherType;        // MATCH_BF, MATCH_FLANN
+            string descriptorType = descMatchingParameters.descriptorType; // DESCRIPTOR_BINARY, DESCRIPTOR_HOG for distance computation selection
+            string selectorType = descMatchingParameters.selectorType;       // SELECT_NN, SELECT_KNN
 
             matchDescriptors((dataBuffer.end() - 2)->keypoints, (dataBuffer.end() - 1)->keypoints,
                              (dataBuffer.end() - 2)->descriptors, (dataBuffer.end() - 1)->descriptors,
