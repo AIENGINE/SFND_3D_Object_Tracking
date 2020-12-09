@@ -15,7 +15,7 @@ using namespace std;
 // detects objects in an image using the YOLO library and a set of pre-trained objects from the COCO database;
 // a set of 80 classes is listed in "coco.names" and pre-trained weights are stored in "yolov3.weights"
 void detectObjects(cv::Mat& img, std::vector<BoundingBox>& bBoxes, float confThreshold, float nmsThreshold, 
-                   std::string basePath, std::string classesFile, std::string modelConfiguration, std::string modelWeights, bool bVis)
+                   const std::string basePath, const std::string classesFile, const std::string modelConfiguration, const std::string modelWeights, bool bVis)
 {
     // load class names from file
     vector<string> classes;
@@ -25,8 +25,8 @@ void detectObjects(cv::Mat& img, std::vector<BoundingBox>& bBoxes, float confThr
     
     // load neural network
     cv::dnn::Net net = cv::dnn::readNetFromDarknet(modelConfiguration, modelWeights);
-    net.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
-    net.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
+    net.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);
+    net.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA);
     
     // generate 4D blob from input image
     cv::Mat blob;
