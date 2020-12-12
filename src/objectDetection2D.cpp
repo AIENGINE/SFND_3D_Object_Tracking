@@ -25,8 +25,8 @@ void detectObjects(cv::Mat& img, std::vector<BoundingBox>& bBoxes, float confThr
     
     // load neural network
     cv::dnn::Net net = cv::dnn::readNetFromDarknet(modelConfiguration, modelWeights);
-    net.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);
-    net.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA);
+    net.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
+    net.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
     
     // generate 4D blob from input image
     cv::Mat blob;
@@ -111,6 +111,8 @@ void detectObjects(cv::Mat& img, std::vector<BoundingBox>& bBoxes, float confThr
             
             string label = cv::format("%.2f", (*it).confidence);
             label = classes[((*it).classID)] + ":" + label;
+
+//            string boxidLabel = to_string(it->boxID);
         
             // Display label at the top of the bounding box
             int baseLine;

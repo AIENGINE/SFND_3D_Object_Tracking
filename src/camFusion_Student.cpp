@@ -157,8 +157,76 @@ void computeTTCLidar(std::vector<LidarPoint> &lidarPointsPrev,
     // ...
 }
 
+/* The idea here is keep track of the boundingboxes from the current and previous frames through matched keypoints
+ * that are contained in the ROI of two frames. To track bounding box correctly a scoring mechanism is implemented
+ * where when both ROI under match keypointe loop has keypoints then their externally tracked integer id is incremented.
+ * The routine where ids are correctly tracked based on the number of keypoints both ROIs have in the previous loop
+ * should update bbBestMatches map. TODO {Algorithm for clusterKptMatchesWithROI} Check: 1. If we can cluster the keypoints
+ * here then in function clusterKptMatchesWithROI create shrink bounding boxes and add only matching keypoints to the
+ * vector of kptmatches. That vector is used to create a loop in which Euclidean Norm is computer for the matched keypoints.
+ * After that mean is calculated to create a threshold that is used again to calculate norm on matched keypoints and
+ * if threshold is met matched keypoints are added on KptMatches.
+ * 2. TODO use original BoxID: that are originating from objectdetection2D.cpp check the BoxID matching loop should give
+ * the same response*/
 
 void matchBoundingBoxes(std::vector<cv::DMatch> &matches, std::map<int, int> &bbBestMatches, DataFrame &prevFrame, DataFrame &currFrame)
 {
-    // ...
+    uint countKeypointsInROIs[prevFrame.boundingBoxes.size()][currFrame.boundingBoxes.size()];
+
+    for (auto& matchingKeypoints: matches)
+    {
+        auto queryKeyPoint = prevFrame.keypoints[matchingKeypoints.queryIdx];
+        auto queryPoint = cv::Point (queryKeyPoint.pt.x, queryKeyPoint.pt.y);
+        bool queryPointFound = false;
+        vector<int> queryBboxIdx;
+        auto trainKeyPoint = currFrame.keypoints[matchingKeypoints.queryIdx];
+        auto trainPoint = cv::Point (trainKeyPoint.pt.x, trainKeyPoint.pt.y);
+        bool trainPointFound = false;
+        vector<int> trainBboxIdx;
+
+        for (int bbxidx = 0; bbxidx < prevFrame.boundingBoxes.size(); ++bbxidx)
+        {
+            if (prevFrame.boundingBoxes[bbxidx].roi.contains(queryPoint))
+            {
+                queryPointFound = true;
+                queryBboxIdx.push_back(bbxidx);
+            }
+        }
+
+        for (int bbxidx = 0; bbxidx < currFrame.boundingBoxes.size(); ++bbxidx)
+        {
+            if (currFrame.boundingBoxes[bbxidx].roi.contains(trainPoint))
+            {
+                trainPointFound = true;
+                trainBboxIdx.push_back(bbxidx);
+            }
+        }
+
+        if (queryPointFound and trainPointFound)
+        {
+            for (auto queryId: queryBboxIdx)
+            {
+                for (auto trainId: trainBboxIdx)
+                {
+                    countKeypointsInROIs[queryId][trainId] += 1;
+                }
+            }
+        }
+
+    }
+
+    for (int i = 0; i < prevFrame.boundingBoxes.size(); i++)
+    {
+        uint maxKeypointCount{0};
+        uint maxCurrFrameId{0};
+        for (int j = 0; j < currFrame.boundingBoxes.size(); j++)
+            if (countKeypointsInROIs[i][j] > maxKeypointCount)
+            {
+                maxKeypointCount = countKeypointsInROIs[i][j];
+                maxCurrFrameId = j;
+            }
+        bbBestMatches[i] = maxCurrFrameId;
+    }
+
+
 }
