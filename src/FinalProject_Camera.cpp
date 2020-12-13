@@ -273,7 +273,7 @@ int main(int argc, const char *argv[])
                 }
 
                 // compute TTC for current match
-                if( currBB->lidarPoints.size()>0 && prevBB->lidarPoints.size()>0 ) // only compute TTC if we have Lidar points
+                if( currBB->lidarPoints.size() > 0 && prevBB->lidarPoints.size() > 0 ) // only compute TTC if we have Lidar points
                 {
                     //// STUDENT ASSIGNMENT
                     //// TASK FP.2 -> compute time-to-collision based on Lidar data (implement -> computeTTCLidar)

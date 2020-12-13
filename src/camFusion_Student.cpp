@@ -154,7 +154,7 @@ void computeTTCCamera(std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPo
 void computeTTCLidar(std::vector<LidarPoint> &lidarPointsPrev,
                      std::vector<LidarPoint> &lidarPointsCurr, double frameRate, double &TTC)
 {
-    // ...
+
 }
 
 /* The idea here is keep track of the boundingboxes from the current and previous frames through matched keypoints
@@ -171,8 +171,13 @@ void computeTTCLidar(std::vector<LidarPoint> &lidarPointsPrev,
 
 void matchBoundingBoxes(std::vector<cv::DMatch> &matches, std::map<int, int> &bbBestMatches, DataFrame &prevFrame, DataFrame &currFrame)
 {
-    uint countKeypointsInROIs[prevFrame.boundingBoxes.size()][currFrame.boundingBoxes.size()];
-
+    const auto prevFrameBboxSize = prevFrame.boundingBoxes.size();
+    const auto currFrameBboxSize = currFrame.boundingBoxes.size();
+    int countKeypointsInROIs[prevFrameBboxSize][currFrameBboxSize];
+    for  (int i = 0; i < prevFrameBboxSize; ++i)
+        for (int j = 0; j < currFrameBboxSize; ++j)
+            countKeypointsInROIs[i][j] = 0;
+//    map<int, int> bbMatchExact; //test to scored bboxid is equal to acutal bboxid from yolo routine
     for (auto& matchingKeypoints: matches)
     {
         auto queryKeyPoint = prevFrame.keypoints[matchingKeypoints.queryIdx];
@@ -184,7 +189,7 @@ void matchBoundingBoxes(std::vector<cv::DMatch> &matches, std::map<int, int> &bb
         bool trainPointFound = false;
         vector<int> trainBboxIdx;
 
-        for (int bbxidx = 0; bbxidx < prevFrame.boundingBoxes.size(); ++bbxidx)
+        for (int bbxidx = 0; bbxidx < prevFrameBboxSize; ++bbxidx)
         {
             if (prevFrame.boundingBoxes[bbxidx].roi.contains(queryPoint))
             {
@@ -193,7 +198,7 @@ void matchBoundingBoxes(std::vector<cv::DMatch> &matches, std::map<int, int> &bb
             }
         }
 
-        for (int bbxidx = 0; bbxidx < currFrame.boundingBoxes.size(); ++bbxidx)
+        for (int bbxidx = 0; bbxidx < currFrameBboxSize; ++bbxidx)
         {
             if (currFrame.boundingBoxes[bbxidx].roi.contains(trainPoint))
             {
@@ -206,27 +211,36 @@ void matchBoundingBoxes(std::vector<cv::DMatch> &matches, std::map<int, int> &bb
         {
             for (auto queryId: queryBboxIdx)
             {
+                prevFrame.boundingBoxes[queryId].keypoints.push_back(queryKeyPoint);
                 for (auto trainId: trainBboxIdx)
                 {
-                    countKeypointsInROIs[queryId][trainId] += 1;
+
+                    countKeypointsInROIs[queryId][trainId] += 1; // prevFrame bbox enclosed keypoints in relation to current frame bbox enclosed keypoints
+                    currFrame.boundingBoxes[trainId].keypoints.push_back(trainKeyPoint);
                 }
             }
         }
 
     }
+    // loop over external indexing for bounding box
 
-    for (int i = 0; i < prevFrame.boundingBoxes.size(); i++)
+    for (int i = 0; i < prevFrameBboxSize; i++)
     {
         uint maxKeypointCount{0};
         uint maxCurrFrameId{0};
-        for (int j = 0; j < currFrame.boundingBoxes.size(); j++)
+        int exactBoxId {0};
+        for (int j = 0; j < currFrameBboxSize; j++)
+        {
             if (countKeypointsInROIs[i][j] > maxKeypointCount)
             {
                 maxKeypointCount = countKeypointsInROIs[i][j];
                 maxCurrFrameId = j;
+                exactBoxId = currFrame.boundingBoxes[j].boxID;
             }
+        }
         bbBestMatches[i] = maxCurrFrameId;
-    }
+//        bbMatchExact[prevFrame.boundingBoxes[i].boxID] = exactBoxId;
 
+    }
 
 }
