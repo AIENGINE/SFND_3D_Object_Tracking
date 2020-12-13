@@ -151,45 +151,128 @@ void computeTTCCamera(std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPo
 }
 
 
+template<typename T>
+double computeMean(const std::vector<T>& numbers)
+{
+    if (numbers.empty())
+        return std::numeric_limits<double>::quiet_NaN();
+
+    return std::accumulate(numbers.begin(), numbers.end(), 0.0) / numbers.size();
+}
+
+template<typename T, typename U>
+double computeVariance(const T mean, const std::vector<U>& numbers)
+{
+    if (numbers.size() <= 1u)
+        return std::numeric_limits<T>::quiet_NaN();
+
+    auto const add_square = [mean](T sum, U i) {
+        auto d = i - mean;
+        return sum + d*d;
+    };
+    double total = std::accumulate(numbers.begin(), numbers.end(), 0.0, add_square);
+    return total / (numbers.size() - 1);
+}
+
+
+void lidarPointInXDirection(vector<LidarPoint>& lidarPoints, vector<double>& lidarPointsInGivenDirection)
+{
+    auto filterDirectionPoints = [&](const LidarPoint points){ lidarPointsInGivenDirection.push_back(points.x); };
+    for_each(lidarPoints.begin(), lidarPoints.end(), filterDirectionPoints);
+}
+
 void computeTTCLidar(std::vector<LidarPoint> &lidarPointsPrev,
                      std::vector<LidarPoint> &lidarPointsCurr, double frameRate, double &TTC)
 {
+    double laneWidth = 4.0; // assumed width of the ego lane
+
+    vector<double> lidarPointsInDirectionX;
+    lidarPointInXDirection(lidarPointsPrev, lidarPointsInDirectionX);
+    auto meanLidarPointsPrev = computeMean<double>(lidarPointsInDirectionX);
+    auto varianceLidarPointPrev = computeVariance(meanLidarPointsPrev, lidarPointsInDirectionX);
+    auto stdDevPrev = sqrt(varianceLidarPointPrev);
+    auto thresholdPrev = stdDevPrev * 2;
+    auto lowerLimitPrev = meanLidarPointsPrev - thresholdPrev;
+    auto upperLimitPrev = meanLidarPointsPrev + thresholdPrev;
+//    cout << "LidarPointsPrev Mean  : " <<meanLidarPointsPrev << " stdDevPrev : " << stdDevPrev<<endl;
+
+    vector<double> lidarPointsInDirectionY;
+    lidarPointInXDirection(lidarPointsCurr, lidarPointsInDirectionY);
+    auto meanLidarPointsCurr = computeMean<double>(lidarPointsInDirectionY);
+    auto varianceLidarPointCurr = computeVariance(meanLidarPointsCurr, lidarPointsInDirectionY);
+    auto stdDevCurr = sqrt(varianceLidarPointCurr);
+    auto thresholdCurr = stdDevCurr * 2;
+    auto lowerLimitCurr = meanLidarPointsCurr - thresholdCurr;
+    auto upperLimitCurr = meanLidarPointsCurr + thresholdCurr;
+//    cout << "LidarPointsCurr Mean  : " <<meanLidarPointsCurr << " stdDevPrev : " << stdDevCurr<<endl;
+
+
+    vector<float> distPointsPrev;
+    vector<float> distPointsCurr;
+    // find closest distance to Lidar points within ego lane
+//    double minXPrev = 1e9, minXCurr = 1e9;
+    for (auto it = lidarPointsPrev.begin(); it != lidarPointsPrev.end(); ++it)
+    {
+        if (abs(it->y) <= laneWidth / 2 and it->x > lowerLimitPrev and it->x < upperLimitPrev)
+        {
+            distPointsPrev.push_back(it->x);
+            //minXPrev = minXPrev > it->x ? it->x : minXPrev;
+            // minXPrev = it->x;
+
+        }
+    }
+
+    for (auto it = lidarPointsCurr.begin(); it != lidarPointsCurr.end(); ++it)
+    {
+        if (abs(it->y) <= laneWidth / 2 and it->x > lowerLimitCurr and it->x < upperLimitCurr)
+        {
+            distPointsCurr.push_back(it->x);
+            //minXCurr = minXCurr > it->x ? it->x : minXCurr;
+            // minXCurr = it->x;
+        }
+    }
+    auto minXPrev = min_element(distPointsPrev.begin(), distPointsPrev.end());
+    auto minXCurr = min_element(distPointsCurr.begin(), distPointsCurr.end());
+    cout << "size of lidarPointsPrev : " << lidarPointsPrev.size() << " size of distPointsPrev : " << distPointsPrev.size() << endl;
+    cout << "size of lidarPointsCurr : " << lidarPointsCurr.size() << " size of distPointsCurr : " << distPointsCurr.size() << endl;
+    // compute TTC from both measurements
+    double dT = 1 / frameRate;
+    TTC = *minXCurr * dT / (*minXPrev - *minXCurr);
 
 }
 
 /* The idea here is keep track of the boundingboxes from the current and previous frames through matched keypoints
  * that are contained in the ROI of two frames. To track bounding box correctly a scoring mechanism is implemented
- * where when both ROI under match keypointe loop has keypoints then their externally tracked integer id is incremented.
- * The routine where ids are correctly tracked based on the number of keypoints both ROIs have in the previous loop
- * should update bbBestMatches map. TODO {Algorithm for clusterKptMatchesWithROI} Check: 1. If we can cluster the keypoints
+ * where when both ROI under match keypoints loop has keypoints then their externally tracked integer id is incremented.
+ * The routine where ids are correctly tracked based on the number of keypoints in both ROIs i.e, for the corresponding
+ * previous frame id check current frame id that has maximum number meaning maximum number of corresponding keypoints
+ * enclosed, which has already been updated in the scoring routine should update bbBestMatches map.
+ * TODO {Algorithm for clusterKptMatchesWithROI} Check: 1. If we can cluster the keypoints
  * here then in function clusterKptMatchesWithROI create shrink bounding boxes and add only matching keypoints to the
  * vector of kptmatches. That vector is used to create a loop in which Euclidean Norm is computer for the matched keypoints.
  * After that mean is calculated to create a threshold that is used again to calculate norm on matched keypoints and
  * if threshold is met matched keypoints are added on KptMatches.
- * 2. TODO use original BoxID: that are originating from objectdetection2D.cpp check the BoxID matching loop should give
- * the same response*/
+*/
 
 void matchBoundingBoxes(std::vector<cv::DMatch> &matches, std::map<int, int> &bbBestMatches, DataFrame &prevFrame, DataFrame &currFrame)
 {
-    const auto prevFrameBboxSize = prevFrame.boundingBoxes.size();
-    const auto currFrameBboxSize = currFrame.boundingBoxes.size();
-    int countKeypointsInROIs[prevFrameBboxSize][currFrameBboxSize];
-    for  (int i = 0; i < prevFrameBboxSize; ++i)
-        for (int j = 0; j < currFrameBboxSize; ++j)
-            countKeypointsInROIs[i][j] = 0;
+    auto prevFrameBboxSize = prevFrame.boundingBoxes.size();
+    auto currFrameBboxSize = currFrame.boundingBoxes.size();
+//    int countKeypointsInROIs[prevFrameBboxSize][currFrameBboxSize] = {};
+    vector<vector<int>> countKeypointsInROIs(prevFrameBboxSize, vector<int> (currFrameBboxSize, 0));
 //    map<int, int> bbMatchExact; //test to scored bboxid is equal to acutal bboxid from yolo routine
     for (auto& matchingKeypoints: matches)
     {
-        auto queryKeyPoint = prevFrame.keypoints[matchingKeypoints.queryIdx];
-        auto queryPoint = cv::Point (queryKeyPoint.pt.x, queryKeyPoint.pt.y);
+        cv::KeyPoint queryKeyPoint = prevFrame.keypoints[matchingKeypoints.queryIdx];
+        cv::Point queryPoint = cv::Point (queryKeyPoint.pt.x, queryKeyPoint.pt.y);
         bool queryPointFound = false;
         vector<int> queryBboxIdx;
-        auto trainKeyPoint = currFrame.keypoints[matchingKeypoints.queryIdx];
-        auto trainPoint = cv::Point (trainKeyPoint.pt.x, trainKeyPoint.pt.y);
+        cv::KeyPoint trainKeyPoint = currFrame.keypoints[matchingKeypoints.trainIdx];
+        cv::Point trainPoint = cv::Point (trainKeyPoint.pt.x, trainKeyPoint.pt.y);
         bool trainPointFound = false;
         vector<int> trainBboxIdx;
 
-        for (int bbxidx = 0; bbxidx < prevFrameBboxSize; ++bbxidx)
+        for (std::size_t bbxidx = 0; bbxidx < prevFrameBboxSize; bbxidx++)
         {
             if (prevFrame.boundingBoxes[bbxidx].roi.contains(queryPoint))
             {
@@ -198,7 +281,7 @@ void matchBoundingBoxes(std::vector<cv::DMatch> &matches, std::map<int, int> &bb
             }
         }
 
-        for (int bbxidx = 0; bbxidx < currFrameBboxSize; ++bbxidx)
+        for (std::size_t bbxidx = 0; bbxidx < currFrameBboxSize; bbxidx++)
         {
             if (currFrame.boundingBoxes[bbxidx].roi.contains(trainPoint))
             {
@@ -207,16 +290,16 @@ void matchBoundingBoxes(std::vector<cv::DMatch> &matches, std::map<int, int> &bb
             }
         }
 
-        if (queryPointFound and trainPointFound)
+        if (queryPointFound && trainPointFound)
         {
             for (auto queryId: queryBboxIdx)
             {
-                prevFrame.boundingBoxes[queryId].keypoints.push_back(queryKeyPoint);
+//                prevFrame.boundingBoxes[queryId].keypoints.push_back(queryKeyPoint);
                 for (auto trainId: trainBboxIdx)
                 {
 
                     countKeypointsInROIs[queryId][trainId] += 1; // prevFrame bbox enclosed keypoints in relation to current frame bbox enclosed keypoints
-                    currFrame.boundingBoxes[trainId].keypoints.push_back(trainKeyPoint);
+//                    currFrame.boundingBoxes[trainId].keypoints.push_back(trainKeyPoint);
                 }
             }
         }
@@ -226,16 +309,16 @@ void matchBoundingBoxes(std::vector<cv::DMatch> &matches, std::map<int, int> &bb
 
     for (int i = 0; i < prevFrameBboxSize; i++)
     {
-        uint maxKeypointCount{0};
-        uint maxCurrFrameId{0};
-        int exactBoxId {0};
+        int maxKeypointCount = 0;
+        int maxCurrFrameId = 0;
+//        int exactBoxId {0};
         for (int j = 0; j < currFrameBboxSize; j++)
         {
             if (countKeypointsInROIs[i][j] > maxKeypointCount)
             {
                 maxKeypointCount = countKeypointsInROIs[i][j];
                 maxCurrFrameId = j;
-                exactBoxId = currFrame.boundingBoxes[j].boxID;
+//                exactBoxId = currFrame.boundingBoxes[j].boxID;
             }
         }
         bbBestMatches[i] = maxCurrFrameId;
