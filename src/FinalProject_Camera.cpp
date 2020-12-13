@@ -70,9 +70,11 @@ int main(int argc, const char *argv[])
 
     // misc
     double sensorFrameRate = 10.0 / imgStepWidth; // frames per second for Lidar and camera
-    const int dataBufferSize{2};      // no. of images which are held in memory (ring buffer) at the same time
-    array<DataFrame, dataBufferSize> dataBuffer; // list of data frames which are held in memory at the same time
-    uint8_t circularIdx{0};
+//    const int dataBufferSize{2};      // no. of images which are held in memory (ring buffer) at the same time
+//    array<DataFrame, dataBufferSize> dataBuffer; // list of data frames which are held in memory at the same time
+//    uint8_t circularIdx{0};
+//    uint idxTrack{0};
+    vector<DataFrame> dataBuffer;
     bool bVis = false;            // visualize results
 
     uint numberOfKeypointsOnVehicle{0};
@@ -86,8 +88,8 @@ int main(int argc, const char *argv[])
     vector<double> keypointDetectionTimePerImg;
     vector<double> keypointDiscriptorTimePerImg;
 
-    string selectedDetectorType = "AKAZE";
-    string selectedDescriptorType = "AKAZE";
+    string selectedDetectorType = "SHITOMASI";
+    string selectedDescriptorType = "BRISK";
     MatchingParameters descMatchingParameters{};
     bool visualizationEnable{false};
     /* MAIN LOOP OVER ALL IMAGES */
@@ -107,8 +109,14 @@ int main(int argc, const char *argv[])
         // push image into data frame buffer
         DataFrame frame;
         frame.cameraImg = img;
-        circularIdx = circularIdx % dataBufferSize;
-        dataBuffer[circularIdx] = frame;
+        dataBuffer.push_back(frame);
+//        circularIdx = circularIdx % dataBufferSize;
+//        if (idxTrack > 1 and circularIdx >= 0)
+//        {
+//            swap(dataBuffer[0], dataBuffer[1]);
+//            circularIdx += 1;
+//        }
+//        dataBuffer[circularIdx] = frame;
 
         cout << "#1 : LOAD IMAGE INTO BUFFER done" << endl;
 
@@ -117,7 +125,7 @@ int main(int argc, const char *argv[])
 
         float confThreshold = 0.2;
         float nmsThreshold = 0.4;        
-         detectObjects(dataBuffer[circularIdx].cameraImg, dataBuffer[circularIdx].boundingBoxes, confThreshold, nmsThreshold,
+         detectObjects((dataBuffer.end()-1)->cameraImg, (dataBuffer.end()-1)->boundingBoxes, confThreshold, nmsThreshold,
                       yoloBasePath, yoloClassesFile, yoloModelConfiguration, yoloModelWeights, bVis);
 
           cout << "#2 : DETECT & CLASSIFY OBJECTS done" << endl;
@@ -133,8 +141,8 @@ int main(int argc, const char *argv[])
         // remove Lidar points based on distance properties
         float minZ = -1.5, maxZ = -0.9, minX = 2.0, maxX = 20.0, maxY = 2.0, minR = 0.1; // focus on ego lane
         cropLidarPoints(lidarPoints, minX, maxX, maxY, minZ, maxZ, minR);
-    
-        (dataBuffer.end() - 1)->lidarPoints = lidarPoints;
+
+        (dataBuffer.end()-1)->lidarPoints = lidarPoints;
 
         cout << "#3 : CROP LIDAR POINTS done" << endl;
 
@@ -143,7 +151,7 @@ int main(int argc, const char *argv[])
 
         // associate Lidar points with camera-based ROI
         float shrinkFactor = 0.10; // shrinks each bounding box by the given percentage to avoid 3D object merging at the edges of an ROI
-        clusterLidarWithROI((dataBuffer.end()-1)->boundingBoxes, (dataBuffer.end() - 1)->lidarPoints, shrinkFactor, P_rect_00, R_rect_00, RT);
+        clusterLidarWithROI((dataBuffer.end()-1)->boundingBoxes, (dataBuffer.end()-1)->lidarPoints, shrinkFactor, P_rect_00, R_rect_00, RT);
 
         // Visualize 3D objects
 //        bVis = false;
@@ -163,7 +171,7 @@ int main(int argc, const char *argv[])
 
         // convert current image to grayscale
         cv::Mat imgGray;
-        cv::cvtColor(dataBuffer[circularIdx].cameraImg, imgGray, cv::COLOR_BGR2GRAY);
+        cv::cvtColor((dataBuffer.end()-1)->cameraImg, imgGray, cv::COLOR_BGR2GRAY);
 
         // extract 2D keypoints from current image
         vector<cv::KeyPoint> keypoints; // create empty feature list for current image
@@ -194,7 +202,7 @@ int main(int argc, const char *argv[])
         }
 
         // push keypoints and descriptor for current frame to end of data buffer
-        dataBuffer[circularIdx].keypoints = keypoints;
+        (dataBuffer.end()-1)->keypoints = keypoints;
 
         cout << "#5 : DETECT KEYPOINTS done" << endl;
 
@@ -203,16 +211,17 @@ int main(int argc, const char *argv[])
 
         cv::Mat descriptors;
 //        string descriptorType = "BRISK"; // BRISK, BRIEF, ORB, FREAK, AKAZE, SIFT
-        descKeypoints(dataBuffer[circularIdx].keypoints, dataBuffer[circularIdx].cameraImg, descriptors, selectedDescriptorType, keypointDiscriptorTime);
+        descKeypoints((dataBuffer.end()-1)->keypoints, (dataBuffer.end()-1)->cameraImg, descriptors, selectedDescriptorType, keypointDiscriptorTime);
 
         // push descriptors for current frame to end of data buffer
-        dataBuffer[circularIdx].descriptors = descriptors;
+        (dataBuffer.end()-1)->descriptors = descriptors;
 
         cout << "#6 : EXTRACT DESCRIPTORS done" << endl;
-        circularIdx++;
+//        circularIdx++;
+//        idxTrack++;
 
-//        if (dataBuffer.size() > 1) // wait until at least two images have been processed
-        if (!dataBuffer[0].cameraImg.empty() && !dataBuffer[1].cameraImg.empty())
+        if (dataBuffer.size() > 1) // wait until at least two images have been processed
+//        if (!dataBuffer[0].cameraImg.empty() && !dataBuffer[1].cameraImg.empty())
         {
 
             /* MATCH KEYPOINT DESCRIPTORS */
@@ -240,7 +249,9 @@ int main(int argc, const char *argv[])
 //           to the same bounding box. All other keypoints are rejected only keypoints within the bounding box are kept.
 //           Moreover, */
             map<int, int> bbBestMatches;
-            matchBoundingBoxes(matches, bbBestMatches, dataBuffer[circularIdx-2], dataBuffer[circularIdx-1]); // associate bounding boxes between current and previous frame using keypoint matches
+//            DataFrame prevFrameDt = *(dataBuffer.end() - 2);
+//            DataFrame currFrameDt = *(dataBuffer.end() - 1);
+            matchBoundingBoxes(matches, bbBestMatches, *(dataBuffer.end() - 2), *(dataBuffer.end() - 1)); // associate bounding boxes between current and previous frame using keypoint matches
             //// EOF STUDENT ASSIGNMENT
 
             // store matches in current data frame
@@ -277,7 +288,8 @@ int main(int argc, const char *argv[])
                 {
                     //// STUDENT ASSIGNMENT
                     //// TASK FP.2 -> compute time-to-collision based on Lidar data (implement -> computeTTCLidar)
-                    double ttcLidar; 
+                    cout << "calling TTC lidar " <<endl;
+                    double ttcLidar;
                     computeTTCLidar(prevBB->lidarPoints, currBB->lidarPoints, sensorFrameRate, ttcLidar);
                     //// EOF STUDENT ASSIGNMENT
 
@@ -314,6 +326,5 @@ int main(int argc, const char *argv[])
         }
 
     } // eof loop over all images
-
     return 0;
 }
