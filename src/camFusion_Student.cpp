@@ -137,9 +137,55 @@ void show3DObjects(std::vector<BoundingBox> &boundingBoxes, cv::Size worldSize, 
 
 
 // associate a given bounding box with the keypoints it contains
-void clusterKptMatchesWithROI(BoundingBox &boundingBox, std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPoint> &kptsCurr, std::vector<cv::DMatch> &kptMatches)
+void clusterKptMatchesWithROI(BoundingBox &boundingBoxCurr, BoundingBox &boundingBoxPrev, std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPoint> &kptsCurr, std::vector<cv::DMatch> &kptMatches)
 {
-    // ...
+    // TODO: Check if same Inner and Outer loops are required to measure similarity distance as in Camera TTC
+    // Shrink Curr and Prev Bounding Boxes
+    vector<cv::DMatch> kptsMatchesInROI;
+    cv::Rect shrinkBoundBoxCurr, shrinkBoundingBoxPrev;
+    const float shrinkFactor = 0.10;
+    shrinkBoundBoxCurr.x = boundingBoxCurr.roi.x + shrinkFactor * boundingBoxCurr.roi.width / 2.0;
+    shrinkBoundBoxCurr.y = boundingBoxCurr.roi.y + shrinkFactor * boundingBoxCurr.roi.height / 2.0;
+    shrinkBoundBoxCurr.width = boundingBoxCurr.roi.width * (1 - shrinkFactor);
+    shrinkBoundBoxCurr.height = boundingBoxCurr.roi.height * (1 - shrinkFactor);
+
+    shrinkBoundingBoxPrev.x = boundingBoxPrev.roi.x + shrinkFactor * boundingBoxPrev.roi.width / 2.0;
+    shrinkBoundingBoxPrev.y = boundingBoxPrev.roi.y + shrinkFactor * boundingBoxPrev.roi.height / 2.0;
+    shrinkBoundingBoxPrev.width = boundingBoxPrev.roi.width * (1 - shrinkFactor);
+    shrinkBoundingBoxPrev.height = boundingBoxPrev.roi.height * (1 - shrinkFactor);
+
+    // TODO Kpts in ROI for testing: Create a DMatch from keypoints pushed in matchingBoundingBox routine and loop over resprective keypoints in each frame and check the results
+    // Check if keypoints from Curr and Prev frames belong to shrink bounding boxes if yes then add kptsMatchesInROI
+    for (const auto& kpts: kptMatches)
+    {
+        auto prevFrameKpt = kptsPrev[kpts.queryIdx];
+        auto kptInPrevFrame = cv::Point (prevFrameKpt.pt.x, prevFrameKpt.pt.y);
+        auto currFrameKpt = kptsCurr[kpts.trainIdx];
+        auto kptInCurrFrame = cv::Point (currFrameKpt.pt.x, currFrameKpt.pt.y);
+
+        // TODO: Check kpts in loop with keypoints stored from the matchBoundingBoxes routine
+        if(shrinkBoundBoxCurr.contains(kptInCurrFrame) and shrinkBoundingBoxPrev.contains(kptInPrevFrame))
+            kptsMatchesInROI.push_back(kpts);
+
+    }
+
+    // Calculate mean from Curr and Prev keypoints in ROI
+    double meanDistance{0.0};
+    for (const auto& kptInROI: kptsMatchesInROI)
+        meanDistance += cv::norm(kptsCurr[kptInROI.trainIdx].pt - kptsPrev[kptInROI.queryIdx].pt);
+    meanDistance = meanDistance / kptsMatchesInROI.size();
+
+    if (kptsMatchesInROI.empty())
+        cerr << "Invalid Keypoitns size detected in function clusterKptMatchesWithROI "<<endl;
+
+    // Check the similarity of keypoints by comparing keypoints distance from curr to prev frames with distance threshold scaled by 1.5x
+    double kptsAcceptanceThreshold = meanDistance * 1.5;
+    for (const auto& kptInROI: kptsMatchesInROI)
+    {
+        double similarityKptsDistance = cv::norm(kptsCurr[kptInROI.trainIdx].pt - kptsPrev[kptInROI.queryIdx].pt);
+        if(similarityKptsDistance < kptsAcceptanceThreshold)
+            boundingBoxCurr.kptMatches.push_back(kptInROI);
+    }
 }
 
 
@@ -147,7 +193,53 @@ void clusterKptMatchesWithROI(BoundingBox &boundingBox, std::vector<cv::KeyPoint
 void computeTTCCamera(std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPoint> &kptsCurr, 
                       std::vector<cv::DMatch> kptMatches, double frameRate, double &TTC, cv::Mat *visImg)
 {
-    // ...
+    // compute distance ratios between all matched keypoints
+    vector<double> distRatios; // stores the distance ratios for all keypoints between curr. and prev. frame
+    for (auto it1 = kptMatches.begin(); it1 != kptMatches.end() - 1; ++it1)
+    { // outer keypoint loop
+
+        // get current keypoint and its matched partner in the prev. frame
+        cv::KeyPoint kpOuterCurr = kptsCurr.at(it1->trainIdx);  //ref
+        cv::KeyPoint kpOuterPrev = kptsPrev.at(it1->queryIdx); //source
+
+        for (auto it2 = kptMatches.begin() + 1; it2 != kptMatches.end(); ++it2)
+        { // inner keypoint loop
+
+            double minDist = 100.0; // min. required distance
+
+            // get next keypoint and its matched partner in the prev. frame
+            cv::KeyPoint kpInnerCurr = kptsCurr.at(it2->trainIdx);
+            cv::KeyPoint kpInnerPrev = kptsPrev.at(it2->queryIdx);
+
+            // compute distances and distance ratios
+            double distCurr = cv::norm(kpOuterCurr.pt - kpInnerCurr.pt);
+            double distPrev = cv::norm(kpOuterPrev.pt - kpInnerPrev.pt);
+
+            if (distPrev > std::numeric_limits<double>::epsilon() && distCurr >= minDist)
+            { // avoid division by zero
+
+                double distRatio = distCurr / distPrev;
+                distRatios.push_back(distRatio);
+            }
+        } // eof inner loop over all matched kpts
+    }     // eof outer loop over all matched kpts
+
+    // only continue if list of distance ratios is not empty
+    if (distRatios.size() == 0)
+    {
+        TTC = NAN;
+        return;
+    }
+
+    // compute camera-based TTC from distance ratios
+//    double meanDistRatio = std::accumulate(distRatios.begin(), distRatios.end(), 0.0) / distRatios.size();
+    std::sort(distRatios.begin(), distRatios.end());
+    long medIndex = floor(distRatios.size() / 2.0);
+    double medianDistRatio = distRatios.size() % 2 == 0 ? (distRatios[medIndex - 1] + distRatios[medIndex]) / 2.0 : distRatios[medIndex];
+
+    double dT = 1 / frameRate;
+    TTC = -dT / (1 - medianDistRatio);
+
 }
 
 
