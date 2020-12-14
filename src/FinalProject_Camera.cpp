@@ -70,11 +70,11 @@ int main(int argc, const char *argv[])
 
     // misc
     double sensorFrameRate = 10.0 / imgStepWidth; // frames per second for Lidar and camera
-//    const int dataBufferSize{2};      // no. of images which are held in memory (ring buffer) at the same time
-//    array<DataFrame, dataBufferSize> dataBuffer; // list of data frames which are held in memory at the same time
-//    uint8_t circularIdx{0};
-//    uint idxTrack{0};
-    vector<DataFrame> dataBuffer;
+    const int dataBufferSize{2};      // no. of images which are held in memory (ring buffer) at the same time
+    array<DataFrame, dataBufferSize> dataBuffer; // list of data frames which are held in memory at the same time
+    uint8_t circularIdx{0};
+    std::size_t idxTrack{0};
+//    vector<DataFrame> dataBuffer;
     bool bVis = false;            // visualize results
 
     uint numberOfKeypointsOnVehicle{0};
@@ -109,14 +109,20 @@ int main(int argc, const char *argv[])
         // push image into data frame buffer
         DataFrame frame;
         frame.cameraImg = img;
-        dataBuffer.push_back(frame);
-//        circularIdx = circularIdx % dataBufferSize;
-//        if (idxTrack > 1 and circularIdx >= 0)
-//        {
-//            swap(dataBuffer[0], dataBuffer[1]);
-//            circularIdx += 1;
-//        }
-//        dataBuffer[circularIdx] = frame;
+//        dataBuffer.push_back(frame);
+        circularIdx = circularIdx % dataBufferSize;
+        if (idxTrack > 1 and circularIdx >= 0)
+        {
+            swap(dataBuffer[0], dataBuffer[1]);
+            circularIdx += 1;
+            dataBuffer[circularIdx] = frame;
+        }else if (circularIdx == 0 and idxTrack == 0)
+            dataBuffer[circularIdx+1] = frame;
+        else if (circularIdx == 1 and idxTrack == 1)
+        {
+            swap(dataBuffer[0], dataBuffer[1]);
+            dataBuffer[circularIdx] = frame;
+        }
 
         cout << "#1 : LOAD IMAGE INTO BUFFER done" << endl;
 
@@ -217,11 +223,11 @@ int main(int argc, const char *argv[])
         (dataBuffer.end()-1)->descriptors = descriptors;
 
         cout << "#6 : EXTRACT DESCRIPTORS done" << endl;
-//        circularIdx++;
-//        idxTrack++;
+        circularIdx++;
+        idxTrack++;
 
-        if (dataBuffer.size() > 1) // wait until at least two images have been processed
-//        if (!dataBuffer[0].cameraImg.empty() && !dataBuffer[1].cameraImg.empty())
+//        if (dataBuffer.size() > 1) // wait until at least two images have been processed
+        if (!dataBuffer[0].cameraImg.empty() && !dataBuffer[1].cameraImg.empty())
         {
 
             /* MATCH KEYPOINT DESCRIPTORS */
@@ -288,9 +294,9 @@ int main(int argc, const char *argv[])
                 {
                     //// STUDENT ASSIGNMENT
                     //// TASK FP.2 -> compute time-to-collision based on Lidar data (implement -> computeTTCLidar)
-                    cout << "calling TTC lidar " <<endl;
                     double ttcLidar;
                     computeTTCLidar(prevBB->lidarPoints, currBB->lidarPoints, sensorFrameRate, ttcLidar);
+                    cout << "TTC lidar : " << ttcLidar <<endl;
                     //// EOF STUDENT ASSIGNMENT
 
                     //// STUDENT ASSIGNMENT

@@ -294,12 +294,12 @@ void matchBoundingBoxes(std::vector<cv::DMatch> &matches, std::map<int, int> &bb
         {
             for (auto queryId: queryBboxIdx)
             {
-//                prevFrame.boundingBoxes[queryId].keypoints.push_back(queryKeyPoint);
+                prevFrame.boundingBoxes[queryId].keypoints.push_back(queryKeyPoint);
                 for (auto trainId: trainBboxIdx)
                 {
 
                     countKeypointsInROIs[queryId][trainId] += 1; // prevFrame bbox enclosed keypoints in relation to current frame bbox enclosed keypoints
-//                    currFrame.boundingBoxes[trainId].keypoints.push_back(trainKeyPoint);
+                    currFrame.boundingBoxes[trainId].keypoints.push_back(trainKeyPoint);
                 }
             }
         }
