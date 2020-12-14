@@ -139,6 +139,8 @@ void show3DObjects(std::vector<BoundingBox> &boundingBoxes, cv::Size worldSize, 
 // associate a given bounding box with the keypoints it contains
 void clusterKptMatchesWithROI(BoundingBox &boundingBoxCurr, BoundingBox &boundingBoxPrev, std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPoint> &kptsCurr, std::vector<cv::DMatch> &kptMatches)
 {
+    string outputLogFile{"../src/kpts.log"};
+    ofstream out(outputLogFile, ios::out);
     // TODO: Check if same Inner and Outer loops are required to measure similarity distance as in Camera TTC
     // Shrink Curr and Prev Bounding Boxes
     vector<cv::DMatch> kptsMatchesInROI;
@@ -154,7 +156,6 @@ void clusterKptMatchesWithROI(BoundingBox &boundingBoxCurr, BoundingBox &boundin
     shrinkBoundingBoxPrev.width = boundingBoxPrev.roi.width * (1 - shrinkFactor);
     shrinkBoundingBoxPrev.height = boundingBoxPrev.roi.height * (1 - shrinkFactor);
 
-    // TODO Kpts in ROI for testing: Create a DMatch from keypoints pushed in matchingBoundingBox routine and loop over resprective keypoints in each frame and check the results
     // Check if keypoints from Curr and Prev frames belong to shrink bounding boxes if yes then add kptsMatchesInROI
     for (const auto& kpts: kptMatches)
     {
@@ -163,9 +164,25 @@ void clusterKptMatchesWithROI(BoundingBox &boundingBoxCurr, BoundingBox &boundin
         auto currFrameKpt = kptsCurr[kpts.trainIdx];
         auto kptInCurrFrame = cv::Point (currFrameKpt.pt.x, currFrameKpt.pt.y);
 
-        // TODO: Check kpts in loop with keypoints stored from the matchBoundingBoxes routine
+
         if(shrinkBoundBoxCurr.contains(kptInCurrFrame) and shrinkBoundingBoxPrev.contains(kptInPrevFrame))
+        {
+
             kptsMatchesInROI.push_back(kpts);
+            out << "kpts from ROI : "<< kptInCurrFrame.x << " : " << kptInCurrFrame.y<< endl;
+        }
+
+    }
+
+    vector<cv::Point> kptsOnObject;
+    for (std::size_t i = 0; i < boundingBoxCurr.keypoints.size(); i++)
+    {
+        auto kptOnObject = cv::Point (boundingBoxCurr.keypoints[i].pt.x, boundingBoxCurr.keypoints[i].pt.y);
+        if (shrinkBoundBoxCurr.contains(kptOnObject))
+        {
+            kptsOnObject.push_back(kptOnObject);
+//            out << "kpts from Tracking : "<< kptOnObject.x << " : " << kptOnObject.y<< endl;
+        }
 
     }
 
@@ -186,6 +203,7 @@ void clusterKptMatchesWithROI(BoundingBox &boundingBoxCurr, BoundingBox &boundin
         if(similarityKptsDistance < kptsAcceptanceThreshold)
             boundingBoxCurr.kptMatches.push_back(kptInROI);
     }
+//    out.close();
 }
 
 
@@ -339,11 +357,6 @@ void computeTTCLidar(std::vector<LidarPoint> &lidarPointsPrev,
  * The routine where ids are correctly tracked based on the number of keypoints in both ROIs i.e, for the corresponding
  * previous frame id check current frame id that has maximum number meaning maximum number of corresponding keypoints
  * enclosed, which has already been updated in the scoring routine should update bbBestMatches map.
- * TODO {Algorithm for clusterKptMatchesWithROI} Check: 1. If we can cluster the keypoints
- * here then in function clusterKptMatchesWithROI create shrink bounding boxes and add only matching keypoints to the
- * vector of kptmatches. That vector is used to create a loop in which Euclidean Norm is computer for the matched keypoints.
- * After that mean is calculated to create a threshold that is used again to calculate norm on matched keypoints and
- * if threshold is met matched keypoints are added on KptMatches.
 */
 
 void matchBoundingBoxes(std::vector<cv::DMatch> &matches, std::map<int, int> &bbBestMatches, DataFrame &prevFrame, DataFrame &currFrame)
