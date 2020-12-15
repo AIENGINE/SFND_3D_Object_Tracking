@@ -41,7 +41,7 @@ struct DataFrame { // represents the available sensor information at the same ti
 struct MatchingParameters
 {
     std::string matcherType{"MATCH_BF"};        // MAT_BF, MAT_FLANN
-    std::string descriptorType{"DESCRIPTOR_BINARY"}; // DES_BINARY, DES_HOG for distance computation selection
+    std::string descriptorType{"DESCRIPTOR_HOG"}; // DES_BINARY, DES_HOG for distance computation selection
     std::string selectorType{"SELECT_KNN"};
     int imgStartIndex{0}; // first file index to load (assumes Lidar and camera names have identical naming convention)
     int imgEndIndex{18};   // last file index to load

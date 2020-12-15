@@ -147,7 +147,7 @@ int evaluate3DobjectTracking(string selectedDetectorType, string selectedDescrip
         /* CLUSTER LIDAR POINT CLOUD */
 
         // associate Lidar points with camera-based ROI
-        float shrinkFactor = 0.10; // shrinks each bounding box by the given percentage to avoid 3D object merging at the edges of an ROI
+        float shrinkFactor = 0.20; // shrinks each bounding box by the given percentage to avoid 3D object merging at the edges of an ROI
         clusterLidarWithROI((dataBuffer.end()-1)->boundingBoxes, (dataBuffer.end()-1)->lidarPoints, shrinkFactor, P_rect_00, R_rect_00, RT);
 
         // Visualize 3D objects
@@ -272,7 +272,7 @@ int evaluate3DobjectTracking(string selectedDetectorType, string selectedDescrip
                     //// TASK FP.2 -> compute time-to-collision based on Lidar data (implement -> computeTTCLidar)
                     double ttcLidar;
                     computeTTCLidar(prevBB->lidarPoints, currBB->lidarPoints, sensorFrameRate, ttcLidar);
-                    fileOut << "TTC lidar : " << ttcLidar <<endl;
+//                    fileOut << "TTC lidar : " << ttcLidar <<endl;
                     //// EOF STUDENT ASSIGNMENT
 
                     //// STUDENT ASSIGNMENT
@@ -281,7 +281,8 @@ int evaluate3DobjectTracking(string selectedDetectorType, string selectedDescrip
                     double ttcCamera;
                     clusterKptMatchesWithROI(*currBB, *prevBB, (dataBuffer.end() - 2)->keypoints, (dataBuffer.end() - 1)->keypoints, (dataBuffer.end() - 1)->kptMatches);
                     computeTTCCamera((dataBuffer.end() - 2)->keypoints, (dataBuffer.end() - 1)->keypoints, currBB->kptMatches, sensorFrameRate, ttcCamera);
-                    fileOut << "TTC Camera : " << ttcCamera <<endl;
+//                    fileOut << "TTC Camera : " << ttcCamera <<endl;
+                    fileOut << ttcLidar << "," << ttcCamera <<endl;
                     //// EOF STUDENT ASSIGNMENT
 
                     if (bVis)
@@ -317,14 +318,15 @@ int main(int argc, const char *argv[])
     vector<string> keypointDetectorTypes{"SHITOMASI", "HARRIS", "SIFT", "FAST", "ORB", "BRISK"};
     vector<string> keypointDescriptorTypes{"SIFT", "BRIEF", "BRISK", "FREAK", "ORB"};
     uint retval;
-    string outputLogFile{"../src/evaluation_3d_tracking.log"};
+    string outputLogFile{"../src/evaluation_3d_tracking_sf_0_2_kptsthr_2_0.csv"};
     ofstream out(outputLogFile, ios::out);
-    bool visualizationFlag{false};
+    bool visualizationFlag{true};
     for (auto& detectorType: keypointDetectorTypes)
     {
         for (auto& descriptorType: keypointDescriptorTypes)
         {
             out<< "DetectorType = "<< detectorType << ", "<< "DescriptorType = "<< descriptorType<<endl;
+            out<< "TTC_Lidar" << ", "<< "TTC_Camera"<<endl;
             cout<< "DetectorType = "<< detectorType << ", "<< "DescriptorType = "<< descriptorType<<endl;
 
             if(detectorType == "SIFT" and descriptorType == "ORB")
@@ -356,6 +358,7 @@ int main(int argc, const char *argv[])
         }
     }
     out<< "DetectorType = "<< "AKAZE"<< ", "<< "DescriptorType = "<< "AKAZE"<<endl;
+    out<< "TTC_Lidar" << ","<< "TTC_Camera"<<endl;
     cout<< "DetectorType = "<< "AKAZE"<< ", "<< "DescriptorType = "<< "AKAZE"<<endl;
     retval = evaluate3DobjectTracking("AKAZE", "AKAZE", descMatchingParameters, out, visualizationFlag);
     if(retval != 0)

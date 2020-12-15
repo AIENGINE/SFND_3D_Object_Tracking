@@ -181,7 +181,7 @@ void clusterKptMatchesWithROI(BoundingBox &boundingBoxCurr, BoundingBox &boundin
         cerr << "Invalid Keypoitns size detected in function clusterKptMatchesWithROI "<<endl;
 
     // Check the similarity of keypoints by comparing keypoints distance from curr to prev frames with distance threshold scaled by 1.5x
-    double kptsAcceptanceThreshold = meanDistance * 1.5;
+    double kptsAcceptanceThreshold = meanDistance * 1.8;
     for (const auto& kptInROI: kptsMatchesInROI)
     {
         double similarityKptsDistance = cv::norm(kptsCurr[kptInROI.trainIdx].pt - kptsPrev[kptInROI.queryIdx].pt);
