@@ -194,57 +194,59 @@ In this final project, you will implement the missing parts in the schematic. To
 
 * FP.3 Associate Keypoint Correspondences with Bounding Boxes
   ```
-  void clusterKptMatchesWithROI(BoundingBox &boundingBoxCurr, BoundingBox &boundingBoxPrev, std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPoint> &kptsCurr, std::vector<cv::DMatch> &kptMatches)
-  {
-    // Shrink Curr and Prev Bounding Boxes
-    vector<cv::DMatch> kptsMatchesInROI;
-    cv::Rect shrinkBoundBoxCurr, shrinkBoundingBoxPrev;
-    const float shrinkFactor = 0.10;
-    shrinkBoundBoxCurr.x = boundingBoxCurr.roi.x + shrinkFactor * boundingBoxCurr.roi.width / 2.0;
-    shrinkBoundBoxCurr.y = boundingBoxCurr.roi.y + shrinkFactor * boundingBoxCurr.roi.height / 2.0;
-    shrinkBoundBoxCurr.width = boundingBoxCurr.roi.width * (1 - shrinkFactor);
-    shrinkBoundBoxCurr.height = boundingBoxCurr.roi.height * (1 - shrinkFactor);
-
-    shrinkBoundingBoxPrev.x = boundingBoxPrev.roi.x + shrinkFactor * boundingBoxPrev.roi.width / 2.0;
-    shrinkBoundingBoxPrev.y = boundingBoxPrev.roi.y + shrinkFactor * boundingBoxPrev.roi.height / 2.0;
-    shrinkBoundingBoxPrev.width = boundingBoxPrev.roi.width * (1 - shrinkFactor);
-    shrinkBoundingBoxPrev.height = boundingBoxPrev.roi.height * (1 - shrinkFactor);
-
-    // Check if keypoints from Curr and Prev frames belong to shrink bounding boxes if yes then add kptsMatchesInROI
-    for (const auto& kpts: kptMatches)
+    
+    void clusterKptMatchesWithROI(BoundingBox &boundingBoxCurr, BoundingBox &boundingBoxPrev, std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPoint> &kptsCurr, std::vector<cv::DMatch> &kptMatches)
     {
-        auto prevFrameKpt = kptsPrev[kpts.queryIdx];
-        auto kptInPrevFrame = cv::Point (prevFrameKpt.pt.x, prevFrameKpt.pt.y);
-        auto currFrameKpt = kptsCurr[kpts.trainIdx];
-        auto kptInCurrFrame = cv::Point (currFrameKpt.pt.x, currFrameKpt.pt.y);
+    
+     // Shrink Curr and Prev Bounding Boxes
+      vector<cv::DMatch> kptsMatchesInROI;
+      cv::Rect shrinkBoundBoxCurr, shrinkBoundingBoxPrev;
+      const float shrinkFactor = 0.10;
+      shrinkBoundBoxCurr.x = boundingBoxCurr.roi.x + shrinkFactor * boundingBoxCurr.roi.width / 2.0;
+      shrinkBoundBoxCurr.y = boundingBoxCurr.roi.y + shrinkFactor * boundingBoxCurr.roi.height / 2.0;
+      shrinkBoundBoxCurr.width = boundingBoxCurr.roi.width * (1 - shrinkFactor);
+      shrinkBoundBoxCurr.height = boundingBoxCurr.roi.height * (1 - shrinkFactor);
+
+      shrinkBoundingBoxPrev.x = boundingBoxPrev.roi.x + shrinkFactor * boundingBoxPrev.roi.width / 2.0;
+      shrinkBoundingBoxPrev.y = boundingBoxPrev.roi.y + shrinkFactor * boundingBoxPrev.roi.height / 2.0;
+      shrinkBoundingBoxPrev.width = boundingBoxPrev.roi.width * (1 - shrinkFactor);
+      shrinkBoundingBoxPrev.height = boundingBoxPrev.roi.height * (1 - shrinkFactor);
+
+      // Check if keypoints from Curr and Prev frames belong to shrink bounding boxes if yes then add kptsMatchesInROI
+      for (const auto& kpts: kptMatches)
+      {
+          auto prevFrameKpt = kptsPrev[kpts.queryIdx];
+          auto kptInPrevFrame = cv::Point (prevFrameKpt.pt.x, prevFrameKpt.pt.y);
+          auto currFrameKpt = kptsCurr[kpts.trainIdx];
+          auto kptInCurrFrame = cv::Point (currFrameKpt.pt.x, currFrameKpt.pt.y);
 
 
-        if(shrinkBoundBoxCurr.contains(kptInCurrFrame) and shrinkBoundingBoxPrev.contains(kptInPrevFrame))
-        {
+          if(shrinkBoundBoxCurr.contains(kptInCurrFrame) and shrinkBoundingBoxPrev.contains(kptInPrevFrame))
+          {
 
-            kptsMatchesInROI.push_back(kpts);
-        }
+              kptsMatchesInROI.push_back(kpts);
+          }
 
+      }
+
+      // Calculate mean from Curr and Prev keypoints in ROI
+      double meanDistance{0.0};
+      for (const auto& kptInROI: kptsMatchesInROI)
+          meanDistance += cv::norm(kptsCurr[kptInROI.trainIdx].pt - kptsPrev[kptInROI.queryIdx].pt);
+      meanDistance = meanDistance / kptsMatchesInROI.size();
+
+      if (kptsMatchesInROI.empty())
+          cerr << "Invalid Keypoitns size detected in function clusterKptMatchesWithROI "<<endl;
+
+      // Check the similarity of keypoints by comparing keypoints distance from curr to prev frames with distance threshold scaled by 1.5x
+      double kptsAcceptanceThreshold = meanDistance * 1.8;
+      for (const auto& kptInROI: kptsMatchesInROI)
+      {
+          double similarityKptsDistance = cv::norm(kptsCurr[kptInROI.trainIdx].pt - kptsPrev[kptInROI.queryIdx].pt);
+          if(similarityKptsDistance < kptsAcceptanceThreshold)
+              boundingBoxCurr.kptMatches.push_back(kptInROI);
+      }
     }
-
-    // Calculate mean from Curr and Prev keypoints in ROI
-    double meanDistance{0.0};
-    for (const auto& kptInROI: kptsMatchesInROI)
-        meanDistance += cv::norm(kptsCurr[kptInROI.trainIdx].pt - kptsPrev[kptInROI.queryIdx].pt);
-    meanDistance = meanDistance / kptsMatchesInROI.size();
-
-    if (kptsMatchesInROI.empty())
-        cerr << "Invalid Keypoitns size detected in function clusterKptMatchesWithROI "<<endl;
-
-    // Check the similarity of keypoints by comparing keypoints distance from curr to prev frames with distance threshold scaled by 1.5x
-    double kptsAcceptanceThreshold = meanDistance * 1.8;
-    for (const auto& kptInROI: kptsMatchesInROI)
-    {
-        double similarityKptsDistance = cv::norm(kptsCurr[kptInROI.trainIdx].pt - kptsPrev[kptInROI.queryIdx].pt);
-        if(similarityKptsDistance < kptsAcceptanceThreshold)
-            boundingBoxCurr.kptMatches.push_back(kptInROI);
-    }
-}
   ```
 * FP.4 Compute Camera-based TTC
  ```
