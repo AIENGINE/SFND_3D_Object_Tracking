@@ -80,9 +80,10 @@ void showLidarTopview(std::vector<LidarPoint> &lidarPoints, cv::Size worldSize, 
     }
 
     // display image
+    cv::flip(topviewImg, topviewImg, 0);
     string windowName = "Top-View Perspective of LiDAR data";
     cv::namedWindow(windowName, 2);
-    cv::imshow(windowName, topviewImg);
+    cv::imshow(windowName, topviewImg.t());
     if(bWait)
     {
         cv::waitKey(0); // wait for key to be pressed
