@@ -108,6 +108,7 @@ In this final project, you will implement the missing parts in the schematic. To
   ```
 
 * FP.2 Compute Lidar-based TTC
+  
   ```
   template<typename T>
   double computeMean(const std::vector<T>& numbers)
@@ -189,10 +190,11 @@ In this final project, you will implement the missing parts in the schematic. To
     double dT = 1 / frameRate;
     TTC = *minXCurr * dT / (*minXPrev - *minXCurr);
 
-}
+  }
   ```
 
 * FP.3 Associate Keypoint Correspondences with Bounding Boxes
+  
   ```
     
     void clusterKptMatchesWithROI(BoundingBox &boundingBoxCurr, BoundingBox &boundingBoxPrev, std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPoint> &kptsCurr, std::vector<cv::DMatch> &kptMatches)
@@ -248,11 +250,14 @@ In this final project, you will implement the missing parts in the schematic. To
       }
     }
   ```
+
 * FP.4 Compute Camera-based TTC
+
  ```
- void computeTTCCamera(std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPoint> &kptsCurr, 
+    void computeTTCCamera(std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPoint> &kptsCurr, 
                       std::vector<cv::DMatch> kptMatches, double frameRate, double &TTC, cv::Mat *visImg)
-{
+    {
+    
     // compute distance ratios between all matched keypoints
     vector<double> distRatios; // stores the distance ratios for all keypoints between curr. and prev. frame
     for (auto it1 = kptMatches.begin(); it1 != kptMatches.end() - 1; ++it1)
@@ -292,7 +297,7 @@ In this final project, you will implement the missing parts in the schematic. To
     }
 
     // compute camera-based TTC from distance ratios
-//    double meanDistRatio = std::accumulate(distRatios.begin(), distRatios.end(), 0.0) / distRatios.size();
+    //    double meanDistRatio = std::accumulate(distRatios.begin(), distRatios.end(), 0.0) / distRatios.size();
     std::sort(distRatios.begin(), distRatios.end());
     long medIndex = floor(distRatios.size() / 2.0);
     double medianDistRatio = distRatios.size() % 2 == 0 ? (distRatios[medIndex - 1] + distRatios[medIndex]) / 2.0 : distRatios[medIndex];
@@ -300,7 +305,8 @@ In this final project, you will implement the missing parts in the schematic. To
     double dT = 1 / frameRate;
     TTC = -dT / (1 - medianDistRatio);
 
-}
+    }
+
  ```
 
 * FP.5 Performance Evaluation 1
@@ -313,6 +319,7 @@ In this final project, you will implement the missing parts in the schematic. To
   
   * Solution : By varying shrinking factor to enclosed lidarpoints and varying similarity acceptance threshold for keypoints in ROI(see function clusterKptMatchesWithROI) the following results are obtained, for the given task two combination of the above two mentioned parameters are used:
   * shrinkingFactor = 0.10 and kptsAcceptanceThreshold = meanDistance * 1.8
+  
 
 |TTC\_Lidar|TTC\_Camera ( DetectorType = SHITOMASI, DescriptorType = BRISK)|TTC\_Camera(DetectorType = SIFT, DescriptorType = SIFT)|TTC\_Camera(DetectorType = SHITOMASI, DescriptorType = SIFT)|
 |----------|---------------------------------------------------------------|-------------------------------------------------------|------------------------------------------------------------|
