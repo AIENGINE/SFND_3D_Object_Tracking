@@ -42,6 +42,10 @@ struct MatchingParameters
 {
     std::string matcherType{"MATCH_BF"};        // MAT_BF, MAT_FLANN
     std::string descriptorType{"DESCRIPTOR_BINARY"}; // DES_BINARY, DES_HOG for distance computation selection
-    std::string selectorType{"SELECT_KNN"};       // SEL_NN, SEL_KNN
+    std::string selectorType{"SELECT_KNN"};
+    int imgStartIndex{0}; // first file index to load (assumes Lidar and camera names have identical naming convention)
+    int imgEndIndex{18};   // last file index to load
+    int imgStepWidth{1};
+    int imgFillWidth{4};  // no. of digits which make up the file index (e.g. img-0001.png)// SEL_NN, SEL_KNN
 };
 #endif /* dataStructures_h */
