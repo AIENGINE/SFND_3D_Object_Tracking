@@ -22,8 +22,8 @@
 
 using namespace std;
 
-/* MAIN PROGRAM */
-int main(int argc, const char *argv[])
+
+int evaluate3DobjectTracking(string selectedDetectorType, string selectedDescriptorType, MatchingParameters& matchingParameters, ofstream& fileOut, bool bVis=false)
 {
     /* INIT VARIABLES AND DATA STRUCTURES */
 
@@ -34,10 +34,6 @@ int main(int argc, const char *argv[])
     string imgBasePath = dataPath + "images/";
     string imgPrefix = "KITTI/2011_09_26/image_02/data/000000"; // left camera, color
     string imgFileType = ".png";
-    int imgStartIndex = 0; // first file index to load (assumes Lidar and camera names have identical naming convention)
-    int imgEndIndex = 18;   // last file index to load
-    int imgStepWidth = 1; 
-    int imgFillWidth = 4;  // no. of digits which make up the file index (e.g. img-0001.png)
 
     // object detection
     string yoloBasePath = dataPath + "dat/yolo/";
@@ -53,29 +49,27 @@ int main(int argc, const char *argv[])
     cv::Mat P_rect_00(3,4,cv::DataType<double>::type); // 3x4 projection matrix after rectification
     cv::Mat R_rect_00(4,4,cv::DataType<double>::type); // 3x3 rectifying rotation to make image planes co-planar
     cv::Mat RT(4,4,cv::DataType<double>::type); // rotation matrix and translation vector
-    
+
     RT.at<double>(0,0) = 7.533745e-03; RT.at<double>(0,1) = -9.999714e-01; RT.at<double>(0,2) = -6.166020e-04; RT.at<double>(0,3) = -4.069766e-03;
     RT.at<double>(1,0) = 1.480249e-02; RT.at<double>(1,1) = 7.280733e-04; RT.at<double>(1,2) = -9.998902e-01; RT.at<double>(1,3) = -7.631618e-02;
     RT.at<double>(2,0) = 9.998621e-01; RT.at<double>(2,1) = 7.523790e-03; RT.at<double>(2,2) = 1.480755e-02; RT.at<double>(2,3) = -2.717806e-01;
     RT.at<double>(3,0) = 0.0; RT.at<double>(3,1) = 0.0; RT.at<double>(3,2) = 0.0; RT.at<double>(3,3) = 1.0;
-    
+
     R_rect_00.at<double>(0,0) = 9.999239e-01; R_rect_00.at<double>(0,1) = 9.837760e-03; R_rect_00.at<double>(0,2) = -7.445048e-03; R_rect_00.at<double>(0,3) = 0.0;
     R_rect_00.at<double>(1,0) = -9.869795e-03; R_rect_00.at<double>(1,1) = 9.999421e-01; R_rect_00.at<double>(1,2) = -4.278459e-03; R_rect_00.at<double>(1,3) = 0.0;
     R_rect_00.at<double>(2,0) = 7.402527e-03; R_rect_00.at<double>(2,1) = 4.351614e-03; R_rect_00.at<double>(2,2) = 9.999631e-01; R_rect_00.at<double>(2,3) = 0.0;
     R_rect_00.at<double>(3,0) = 0; R_rect_00.at<double>(3,1) = 0; R_rect_00.at<double>(3,2) = 0; R_rect_00.at<double>(3,3) = 1;
-    
+
     P_rect_00.at<double>(0,0) = 7.215377e+02; P_rect_00.at<double>(0,1) = 0.000000e+00; P_rect_00.at<double>(0,2) = 6.095593e+02; P_rect_00.at<double>(0,3) = 0.000000e+00;
     P_rect_00.at<double>(1,0) = 0.000000e+00; P_rect_00.at<double>(1,1) = 7.215377e+02; P_rect_00.at<double>(1,2) = 1.728540e+02; P_rect_00.at<double>(1,3) = 0.000000e+00;
-    P_rect_00.at<double>(2,0) = 0.000000e+00; P_rect_00.at<double>(2,1) = 0.000000e+00; P_rect_00.at<double>(2,2) = 1.000000e+00; P_rect_00.at<double>(2,3) = 0.000000e+00;    
+    P_rect_00.at<double>(2,0) = 0.000000e+00; P_rect_00.at<double>(2,1) = 0.000000e+00; P_rect_00.at<double>(2,2) = 1.000000e+00; P_rect_00.at<double>(2,3) = 0.000000e+00;
 
     // misc
-    double sensorFrameRate = 10.0 / imgStepWidth; // frames per second for Lidar and camera
+    double sensorFrameRate = 10.0 / matchingParameters.imgStepWidth; // frames per second for Lidar and camera
     const int dataBufferSize{2};      // no. of images which are held in memory (ring buffer) at the same time
     array<DataFrame, dataBufferSize> dataBuffer; // list of data frames which are held in memory at the same time
     uint8_t circularIdx{0};
     std::size_t idxTrack{0};
-//    vector<DataFrame> dataBuffer;
-    bool bVis = false;            // visualize results
 
     uint numberOfKeypointsOnVehicle{0};
     vector<uint> numOfKeypointsPerImage;
@@ -88,35 +82,33 @@ int main(int argc, const char *argv[])
     vector<double> keypointDetectionTimePerImg;
     vector<double> keypointDiscriptorTimePerImg;
 
-    string selectedDetectorType = "SHITOMASI";
-    string selectedDescriptorType = "BRISK";
-    MatchingParameters descMatchingParameters{};
-    bool visualizationEnable{false};
+    bool kptsDetvisualizationEnable{false};
     /* MAIN LOOP OVER ALL IMAGES */
 
-    for (size_t imgIndex = 0; imgIndex <= imgEndIndex - imgStartIndex; imgIndex+=imgStepWidth)
+    for (size_t imgIndex = 0; imgIndex <= matchingParameters.imgEndIndex - matchingParameters.imgStartIndex; imgIndex+=matchingParameters.imgStepWidth)
     {
         /* LOAD IMAGE INTO BUFFER */
 
         // assemble filenames for current index
         ostringstream imgNumber;
-        imgNumber << setfill('0') << setw(imgFillWidth) << imgStartIndex + imgIndex;
+        imgNumber << setfill('0') << setw(matchingParameters.imgFillWidth) << matchingParameters.imgStartIndex + imgIndex;
         string imgFullFilename = imgBasePath + imgPrefix + imgNumber.str() + imgFileType;
 
-        // load image from file 
+        // load image from file
         cv::Mat img = cv::imread(imgFullFilename);
 
         // push image into data frame buffer
         DataFrame frame;
         frame.cameraImg = img;
-//        dataBuffer.push_back(frame);
+
         circularIdx = circularIdx % dataBufferSize;
         if (idxTrack > 1 and circularIdx >= 0)
         {
             swap(dataBuffer[0], dataBuffer[1]);
             circularIdx += 1;
             dataBuffer[circularIdx] = frame;
-        }else if (circularIdx == 0 and idxTrack == 0)
+        }
+        else if (circularIdx == 0 and idxTrack == 0)
             dataBuffer[circularIdx+1] = frame;
         else if (circularIdx == 1 and idxTrack == 1)
         {
@@ -130,12 +122,11 @@ int main(int argc, const char *argv[])
         /* DETECT & CLASSIFY OBJECTS */
 
         float confThreshold = 0.2;
-        float nmsThreshold = 0.4;        
-         detectObjects((dataBuffer.end()-1)->cameraImg, (dataBuffer.end()-1)->boundingBoxes, confThreshold, nmsThreshold,
+        float nmsThreshold = 0.4;
+        detectObjects((dataBuffer.end()-1)->cameraImg, (dataBuffer.end()-1)->boundingBoxes, confThreshold, nmsThreshold,
                       yoloBasePath, yoloClassesFile, yoloModelConfiguration, yoloModelWeights, bVis);
 
-          cout << "#2 : DETECT & CLASSIFY OBJECTS done" << endl;
-
+        cout << "#2 : DETECT & CLASSIFY OBJECTS done" << endl;
 
         /* CROP LIDAR POINTS */
 
@@ -160,18 +151,11 @@ int main(int argc, const char *argv[])
         clusterLidarWithROI((dataBuffer.end()-1)->boundingBoxes, (dataBuffer.end()-1)->lidarPoints, shrinkFactor, P_rect_00, R_rect_00, RT);
 
         // Visualize 3D objects
-//        bVis = false;
         if(bVis)
         {
             show3DObjects((dataBuffer.end()-1)->boundingBoxes, cv::Size(4.0, 20.0), cv::Size(1000, 2000), true);
         }
-//        bVis = false;
-
         cout << "#4 : CLUSTER LIDAR POINT CLOUD done" << endl;
-        
-        
-        // REMOVE THIS LINE BEFORE PROCEEDING WITH THE FINAL PROJECT
-//        continue; // skips directly to the next image without processing what comes beneath
 
         /* DETECT IMAGE KEYPOINTS */
 
@@ -181,19 +165,17 @@ int main(int argc, const char *argv[])
 
         // extract 2D keypoints from current image
         vector<cv::KeyPoint> keypoints; // create empty feature list for current image
-//        string detectorType = "SHITOMASI";
-
         if (selectedDetectorType == "SHITOMASI")
         {
-            detKeypointsShiTomasi(keypoints, imgGray, keypointDetectionTime, visualizationEnable);
+            detKeypointsShiTomasi(keypoints, imgGray, keypointDetectionTime, kptsDetvisualizationEnable);
         }
         else if (selectedDetectorType == "HARRIS")
         {
-            detKeypointsHarris(keypoints, imgGray, keypointDetectionTime, visualizationEnable);
+            detKeypointsHarris(keypoints, imgGray, keypointDetectionTime, kptsDetvisualizationEnable);
         }
         else
         {
-            detKeypointsModern(keypoints, imgGray, selectedDetectorType, keypointDetectionTime, visualizationEnable);
+            detKeypointsModern(keypoints, imgGray, selectedDetectorType, keypointDetectionTime, kptsDetvisualizationEnable);
         }
         keypointDetectionTimePerImg.push_back(keypointDetectionTime);
 
@@ -216,7 +198,6 @@ int main(int argc, const char *argv[])
         /* EXTRACT KEYPOINT DESCRIPTORS */
 
         cv::Mat descriptors;
-//        string descriptorType = "BRISK"; // BRISK, BRIEF, ORB, FREAK, AKAZE, SIFT
         descKeypoints((dataBuffer.end()-1)->keypoints, (dataBuffer.end()-1)->cameraImg, descriptors, selectedDescriptorType, keypointDiscriptorTime);
 
         // push descriptors for current frame to end of data buffer
@@ -226,16 +207,16 @@ int main(int argc, const char *argv[])
         circularIdx++;
         idxTrack++;
 
-//        if (dataBuffer.size() > 1) // wait until at least two images have been processed
+
         if (!dataBuffer[0].cameraImg.empty() && !dataBuffer[1].cameraImg.empty())
         {
 
             /* MATCH KEYPOINT DESCRIPTORS */
-
+            // Default parameters are already loaded in struct MatchingParameters
             vector<cv::DMatch> matches;
-            string matcherType = descMatchingParameters.matcherType;        // MATCH_BF, MATCH_FLANN
-            string descriptorType = descMatchingParameters.descriptorType; // DESCRIPTOR_BINARY, DESCRIPTOR_HOG for distance computation selection
-            string selectorType = descMatchingParameters.selectorType;       // SELECT_NN, SELECT_KNN
+            string matcherType = matchingParameters.matcherType;        // MATCH_BF, MATCH_FLANN
+            string descriptorType = matchingParameters.descriptorType; // DESCRIPTOR_BINARY, DESCRIPTOR_HOG for distance computation selection
+            string selectorType = matchingParameters.selectorType;       // SELECT_NN, SELECT_KNN
 
             matchDescriptors((dataBuffer.end() - 2)->keypoints, (dataBuffer.end() - 1)->keypoints,
                              (dataBuffer.end() - 2)->descriptors, (dataBuffer.end() - 1)->descriptors,
@@ -246,17 +227,13 @@ int main(int argc, const char *argv[])
 
             cout << "#7 : MATCH KEYPOINT DESCRIPTORS done" << endl;
 
-            
+
             /* TRACK 3D OBJECT BOUNDING BOXES */
 
             //// STUDENT ASSIGNMENT
             //// TASK FP.1 -> match list of 3D objects (vector<BoundingBox>) between current and previous frame (implement ->matchBoundingBoxes)
-//           /* Here we are associating matched descriptors/keypoints from current and the previous frame if they belong
-//           to the same bounding box. All other keypoints are rejected only keypoints within the bounding box are kept.
-//           Moreover, */
+
             map<int, int> bbBestMatches;
-//            DataFrame prevFrameDt = *(dataBuffer.end() - 2);
-//            DataFrame currFrameDt = *(dataBuffer.end() - 1);
             matchBoundingBoxes(matches, bbBestMatches, *(dataBuffer.end() - 2), *(dataBuffer.end() - 1)); // associate bounding boxes between current and previous frame using keypoint matches
             //// EOF STUDENT ASSIGNMENT
 
@@ -264,7 +241,6 @@ int main(int argc, const char *argv[])
             (dataBuffer.end()-1)->bbMatches = bbBestMatches;
 
             cout << "#8 : TRACK 3D OBJECT BOUNDING BOXES done" << endl;
-
 
             /* COMPUTE TTC ON OBJECT IN FRONT */
 
@@ -296,7 +272,7 @@ int main(int argc, const char *argv[])
                     //// TASK FP.2 -> compute time-to-collision based on Lidar data (implement -> computeTTCLidar)
                     double ttcLidar;
                     computeTTCLidar(prevBB->lidarPoints, currBB->lidarPoints, sensorFrameRate, ttcLidar);
-                    cout << "TTC lidar : " << ttcLidar <<endl;
+                    fileOut << "TTC lidar : " << ttcLidar <<endl;
                     //// EOF STUDENT ASSIGNMENT
 
                     //// STUDENT ASSIGNMENT
@@ -305,16 +281,15 @@ int main(int argc, const char *argv[])
                     double ttcCamera;
                     clusterKptMatchesWithROI(*currBB, *prevBB, (dataBuffer.end() - 2)->keypoints, (dataBuffer.end() - 1)->keypoints, (dataBuffer.end() - 1)->kptMatches);
                     computeTTCCamera((dataBuffer.end() - 2)->keypoints, (dataBuffer.end() - 1)->keypoints, currBB->kptMatches, sensorFrameRate, ttcCamera);
-                    cout << "TTC Camera : " << ttcCamera <<endl;
+                    fileOut << "TTC Camera : " << ttcCamera <<endl;
                     //// EOF STUDENT ASSIGNMENT
 
-                    bVis = false;
                     if (bVis)
                     {
                         cv::Mat visImg = (dataBuffer.end() - 1)->cameraImg.clone();
                         showLidarImgOverlay(visImg, currBB->lidarPoints, P_rect_00, R_rect_00, RT, &visImg);
                         cv::rectangle(visImg, cv::Point(currBB->roi.x, currBB->roi.y), cv::Point(currBB->roi.x + currBB->roi.width, currBB->roi.y + currBB->roi.height), cv::Scalar(0, 255, 0), 2);
-                        
+
                         char str[200];
                         sprintf(str, "TTC Lidar : %f s, TTC Camera : %f s", ttcLidar, ttcCamera);
                         putText(visImg, str, cv::Point2f(80, 50), cv::FONT_HERSHEY_PLAIN, 2, cv::Scalar(0,0,255));
@@ -325,13 +300,71 @@ int main(int argc, const char *argv[])
                         cout << "Press key to continue to next frame" << endl;
                         cv::waitKey(0);
                     }
-//                    bVis = false;
 
                 } // eof TTC computation
-            } // eof loop over all BB matches            
+            } // eof loop over all BB matches
 
         }
 
     } // eof loop over all images
+    return 0;
+}
+
+/* MAIN PROGRAM */
+int main(int argc, const char *argv[])
+{
+    MatchingParameters descMatchingParameters;
+    vector<string> keypointDetectorTypes{"SHITOMASI", "HARRIS", "SIFT", "FAST", "ORB", "BRISK"};
+    vector<string> keypointDescriptorTypes{"SIFT", "BRIEF", "BRISK", "FREAK", "ORB"};
+    uint retval;
+    string outputLogFile{"../src/evaluation_3d_tracking.log"};
+    ofstream out(outputLogFile, ios::out);
+    bool visualizationFlag{false};
+    for (auto& detectorType: keypointDetectorTypes)
+    {
+        for (auto& descriptorType: keypointDescriptorTypes)
+        {
+            out<< "DetectorType = "<< detectorType << ", "<< "DescriptorType = "<< descriptorType<<endl;
+            cout<< "DetectorType = "<< detectorType << ", "<< "DescriptorType = "<< descriptorType<<endl;
+
+            if(detectorType == "SIFT" and descriptorType == "ORB")
+                continue; //SIFT det. and ORB Desc.
+            if (descriptorType == "BRISK")
+            {
+                descMatchingParameters.matcherType = "MATCH_BF";
+                descMatchingParameters.descriptorType = "DESCRIPTOR_BINARY";
+                descMatchingParameters.selectorType = "SELECT_KNN";
+                retval = evaluate3DobjectTracking(detectorType, descriptorType, descMatchingParameters, out, visualizationFlag);
+                if(retval != 0)
+                {
+                    cerr<< "Evaluation failed!!!" <<endl;
+                    exit(1);
+                }
+            }
+            if(descriptorType != "BRISK")
+            {
+                descMatchingParameters.matcherType = "MATCH_BF";
+                descMatchingParameters.descriptorType = "DESCRIPTOR_HOG";
+                descMatchingParameters.selectorType = "SELECT_KNN";
+                retval = evaluate3DobjectTracking(detectorType, descriptorType, descMatchingParameters, out, visualizationFlag);
+                if(retval != 0)
+                {
+                    cerr<< "Evaluation failed!!!" <<endl;
+                    exit(1);
+                }
+            }
+        }
+    }
+    out<< "DetectorType = "<< "AKAZE"<< ", "<< "DescriptorType = "<< "AKAZE"<<endl;
+    cout<< "DetectorType = "<< "AKAZE"<< ", "<< "DescriptorType = "<< "AKAZE"<<endl;
+    retval = evaluate3DobjectTracking("AKAZE", "AKAZE", descMatchingParameters, out, visualizationFlag);
+    if(retval != 0)
+    {
+        cerr<< "Evaluation failed!!!" <<endl;
+        exit(1);
+    }
+    out.close();
+    return 0;
+
     return 0;
 }

@@ -139,8 +139,6 @@ void show3DObjects(std::vector<BoundingBox> &boundingBoxes, cv::Size worldSize, 
 // associate a given bounding box with the keypoints it contains
 void clusterKptMatchesWithROI(BoundingBox &boundingBoxCurr, BoundingBox &boundingBoxPrev, std::vector<cv::KeyPoint> &kptsPrev, std::vector<cv::KeyPoint> &kptsCurr, std::vector<cv::DMatch> &kptMatches)
 {
-    string outputLogFile{"../src/kpts.log"};
-    ofstream out(outputLogFile, ios::out);
     // TODO: Check if same Inner and Outer loops are required to measure similarity distance as in Camera TTC
     // Shrink Curr and Prev Bounding Boxes
     vector<cv::DMatch> kptsMatchesInROI;
@@ -169,19 +167,6 @@ void clusterKptMatchesWithROI(BoundingBox &boundingBoxCurr, BoundingBox &boundin
         {
 
             kptsMatchesInROI.push_back(kpts);
-            out << "kpts from ROI : "<< kptInCurrFrame.x << " : " << kptInCurrFrame.y<< endl;
-        }
-
-    }
-
-    vector<cv::Point> kptsOnObject;
-    for (std::size_t i = 0; i < boundingBoxCurr.keypoints.size(); i++)
-    {
-        auto kptOnObject = cv::Point (boundingBoxCurr.keypoints[i].pt.x, boundingBoxCurr.keypoints[i].pt.y);
-        if (shrinkBoundBoxCurr.contains(kptOnObject))
-        {
-            kptsOnObject.push_back(kptOnObject);
-//            out << "kpts from Tracking : "<< kptOnObject.x << " : " << kptOnObject.y<< endl;
         }
 
     }
@@ -203,7 +188,6 @@ void clusterKptMatchesWithROI(BoundingBox &boundingBoxCurr, BoundingBox &boundin
         if(similarityKptsDistance < kptsAcceptanceThreshold)
             boundingBoxCurr.kptMatches.push_back(kptInROI);
     }
-//    out.close();
 }
 
 
@@ -320,15 +304,12 @@ void computeTTCLidar(std::vector<LidarPoint> &lidarPointsPrev,
     vector<float> distPointsPrev;
     vector<float> distPointsCurr;
     // find closest distance to Lidar points within ego lane
-//    double minXPrev = 1e9, minXCurr = 1e9;
+
     for (auto it = lidarPointsPrev.begin(); it != lidarPointsPrev.end(); ++it)
     {
         if (abs(it->y) <= laneWidth / 2 and it->x > lowerLimitPrev and it->x < upperLimitPrev)
         {
             distPointsPrev.push_back(it->x);
-            //minXPrev = minXPrev > it->x ? it->x : minXPrev;
-            // minXPrev = it->x;
-
         }
     }
 
@@ -337,8 +318,6 @@ void computeTTCLidar(std::vector<LidarPoint> &lidarPointsPrev,
         if (abs(it->y) <= laneWidth / 2 and it->x > lowerLimitCurr and it->x < upperLimitCurr)
         {
             distPointsCurr.push_back(it->x);
-            //minXCurr = minXCurr > it->x ? it->x : minXCurr;
-            // minXCurr = it->x;
         }
     }
     auto minXPrev = min_element(distPointsPrev.begin(), distPointsPrev.end());
@@ -363,7 +342,7 @@ void matchBoundingBoxes(std::vector<cv::DMatch> &matches, std::map<int, int> &bb
 {
     auto prevFrameBboxSize = prevFrame.boundingBoxes.size();
     auto currFrameBboxSize = currFrame.boundingBoxes.size();
-//    int countKeypointsInROIs[prevFrameBboxSize][currFrameBboxSize] = {};
+// All elements must be zero initialized for algorithm to work
     vector<vector<int>> countKeypointsInROIs(prevFrameBboxSize, vector<int> (currFrameBboxSize, 0));
 //    map<int, int> bbMatchExact; //test to scored bboxid is equal to acutal bboxid from yolo routine
     for (auto& matchingKeypoints: matches)
@@ -399,12 +378,12 @@ void matchBoundingBoxes(std::vector<cv::DMatch> &matches, std::map<int, int> &bb
         {
             for (auto queryId: queryBboxIdx)
             {
-                prevFrame.boundingBoxes[queryId].keypoints.push_back(queryKeyPoint);
+//                prevFrame.boundingBoxes[queryId].keypoints.push_back(queryKeyPoint); // can be used directly for ROI test in clusterKptMatchesWithROI function
                 for (auto trainId: trainBboxIdx)
                 {
 
                     countKeypointsInROIs[queryId][trainId] += 1; // prevFrame bbox enclosed keypoints in relation to current frame bbox enclosed keypoints
-                    currFrame.boundingBoxes[trainId].keypoints.push_back(trainKeyPoint);
+//                    currFrame.boundingBoxes[trainId].keypoints.push_back(trainKeyPoint);
                 }
             }
         }
@@ -417,7 +396,7 @@ void matchBoundingBoxes(std::vector<cv::DMatch> &matches, std::map<int, int> &bb
         int maxKeypointCount = 0;
         int maxCurrFrameId = 0;
 //        int exactBoxId {0};
-        for (int j = 0; j < currFrameBboxSize; j++)
+        for (std::size_t j = 0; j < currFrameBboxSize; j++)
         {
             if (countKeypointsInROIs[i][j] > maxKeypointCount)
             {
